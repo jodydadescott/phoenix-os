@@ -1,0 +1,106 @@
+################################################################################
+# This script is responsible for starting the next stage. It handles setting up
+# the bootimage mount, decompressing the image and executing boot0. It is a
+# library so that it may be called automatically or manually.
+################################################################################
+
+. /usr/lib/systemd/autoinit.settings || exit 2
+
+################################################################################
+
+[[ $PERSIST ]] || { echo "Missing var PERSIST"; exit 2; }
+[[ $BOOTIMAGE ]] || { echo "Missing var BOOTIMAGE"; exit 2; }
+
+################################################################################
+
+function lib_mount() {
+   # If mount fails, mountpoint will be removed
+   label=$1; mountpoint=$2
+   [[ $label ]] || { echo "Usage: label mount_point"; return 2; }
+   [[ $mountpoint ]] || { echo "Usage: label *mount_point*"; return 2; }
+
+   mountpoint -q $mountpoint > /dev/null 2>&1 && return 0
+   mkdir -p $mountpoint; mount -L $label $mountpoint ||
+      { rmdir $mountpoint; return 3; }
+   return 0
+}
+
+function _boot_cleanup() {
+   [ -d $BOOTIMAGE ] || return 0
+   mountpoint -q ${BOOTIMAGE}/proc && { umount ${BOOTIMAGE}/proc || return 3; }
+   mountpoint -q ${BOOTIMAGE}/dev && { umount ${BOOTIMAGE}/dev || return 3; }
+   return 0
+}
+
+function run_init() {
+
+   # If failure occurs cleanup
+   trap _boot_cleanup EXIT
+
+   lib_mount $PERSIST_LABEL $PERSIST ||
+      { echo "Mount failed for ${PERSIST}; Fatal!"; return 3; }
+
+   [ -f ${PERSIST}/boot-config ] ||
+      { echo "File ${PERSIST}/boot-config not found; Fatal!"; return 3; }
+
+   boot_image_name=$(cat ${PERSIST}/boot-config);
+   echo "Boot image name is $boot_image_name"
+
+   boot_image_file="${PERSIST}/$boot_image_name"
+   echo "Boot image file is $boot_image_file"
+
+   [ -f $boot_image_file ] ||
+      { echo "Image file $boot_image_file not found; Fatal!"; return 3; }
+
+   _boot_cleanup ||
+      { echo "Initial boot cleanup failed, this is not expected; Fatal!"; return 3; }
+
+   disk=/dev/disk/by-label/${BOOTIMAGE_LABEL}
+   [ -b $disk ] || { echo "Disk $disk not found; Fatal!"; return 3; }
+
+   echo "Disk with label $BOOTIMAGE_LABEL is $disk"
+
+   echo "Prepairing filesystem"
+   mkfs.ext4 -L $BOOTIMAGE_LABEL -F $disk ||
+      { echo "Format of disk $disk failed; Fatal!"; return 3; }
+   lib_mount $BOOTIMAGE_LABEL $BOOTIMAGE
+
+   echo "Decompressing boot image"
+   unsquashfs -f -d $BOOTIMAGE $boot_image_file
+
+   mkdir -p ${BOOTIMAGE}/usr/lib/systemd
+
+   settings=/usr/lib/systemd/autoinit.settings
+   install -m 0644 $settings ${BOOTIMAGE}/usr/lib/systemd ||
+      { echo "Failed to install autoinit.settings"; return 3; }
+
+   # Install the post autoinit as autoinit
+   install -m 0755 /usr/share/post_autoinit ${BOOTIMAGE}/usr/bin/autoinit ||
+      { echo "Failed to install autoinit"; return 3; }
+
+   cp /usr/lib/systemd/autoinit.settings ${BOOTIMAGE}/usr/lib/systemd ||
+      { echo "Failed to install file autoinit.settings"; return 3; }
+
+   [ -f ${BOOTIMAGE}/boot0 ] ||
+      { echo "File ${BOOTIMAGE}/boot0 does NOT exist; Fatal!"; return 3; }
+
+   [ -x ${BOOTIMAGE}/boot0 ] || {
+         echo "File ${BOOTIMAGE}/boot0 does exist but is NOT executable; Fatal!"
+         return 3
+   }
+
+   mkdir -p ${BOOTIMAGE}/proc || { echo "Unexpected error; Fatal!"; return 3; }
+   mkdir -p ${BOOTIMAGE}/dev || { echo "Unexpected error; Fatal!"; return 3; }
+
+   mount -t proc none ${BOOTIMAGE}/proc ||
+      { echo "Failed to mount proc"; return 3; }
+
+   mount -o bind /dev ${BOOTIMAGE}/dev ||
+      { echo "Failed to mount dev "; return 3; }
+
+   # Note: boot0 script will use our env vars
+
+   chroot ${BOOTIMAGE} ./boot0
+}
+
+################################################################################

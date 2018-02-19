@@ -1,0 +1,40 @@
+### KVM Setup ######################################################################################
+
+VPATH="/persist/var/libvirt"
+
+mkdir -p ${VPATH}/images
+
+systemctl start libvirtd
+systemctl start virtlogd.socket
+
+systemctl enable libvirtd
+systemctl enable virtlogd.socket
+
+# echo "export LIBVIRT_DEFAULT_URI=qemu:///system" >> /etc/profile
+
+cat << EOF > /tmp/pool.xml
+<pool type='dir'>
+  <name>default</name>
+  <uuid>$(uuidgen)</uuid>
+  <capacity unit='bytes'>40027750400</capacity>
+  <allocation unit='bytes'>4286173184</allocation>
+  <available unit='bytes'>35741577216</available>
+  <source>
+  </source>
+  <target>
+    <path>$VPATH</path>
+    <permissions>
+      <mode>0711</mode>
+      <owner>0</owner>
+      <group>0</group>
+    </permissions>
+  </target>
+</pool>
+EOF
+
+virsh pool-create /tmp/pool.xml
+virsh pool-refresh default
+
+rm -rf /tmp/pool.xml
+
+####################################################################################################

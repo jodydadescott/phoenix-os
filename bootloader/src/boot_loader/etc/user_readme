@@ -1,0 +1,8 @@
+# If this is a new install
+# 1) Run the script configure_partitions.sh, this will generate a new script install_partitions.sh
+# 2) If you are happy with the script install_partitions.sh the run it
+# 3) If successful you may reboot and remove the usb stick
+#
+# If this is an upgrade
+# 1) Run the script install_bootloader.sh
+# 2) If successful you may reboot and remove the usb stick

@@ -1,0 +1,30 @@
+APPEND+=" root=LABEL=bootimage rootfstype=auto rw selinux=0 "
+
+[[ $PERSIST ]] || { echo "env var PERSIST not found!"; exit 3; }
+[[ $PERSIST_LABEL ]] || { echo "env var PERSIST_LABEL not found!"; exit 3; }
+
+[ -f /boot/initrd ] ||  { echo "initrd not found"; exit 3; }
+[ -f /boot/vmlinuz ] || { echo "vmlinuz not found"; exit 3; }
+[ -f /proc/cmdline ] || { echo "File /proc/cmdline not found"; exit 3; }
+
+command_line="$APPEND"
+
+in_command_line=$(cat /proc/cmdline)
+for arg in $(echo $in_command_line | tr ";" "\n"); do
+   [[ "$arg" =~ "console" ]] && { command_line+=" $arg "; }
+done
+
+# Add persisten filesystem to fstab
+mkdir -p $PERSIST || { echo "Unable to create directory $PERSIST"; exit 3; }
+echo "LABEL=$PERSIST_LABEL $PERSIST auto defaults 0 0" > /etc/fstab ||
+   { echo "Unable to create /etc/fstab"; exit 3; }
+
+mount $PERSIST || { echo "mount $PERSIST failed"; exit 3; }
+# Restore config
+/usr/bin/aconfig restore
+
+echo "Booting with command line= $command_line"
+
+kexec -l /boot/vmlinuz --initrd=/boot/initrd --command-line="$command_line"
+
+kexec -e

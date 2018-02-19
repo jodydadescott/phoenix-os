@@ -1,0 +1,3 @@
+# Change storage driver to overlay
+
+STORAGE_DRIVER=overlay

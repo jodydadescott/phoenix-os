@@ -1,0 +1,61 @@
+#########################################################################################
+
+. /usr/lib/systemd/autoinit.settings || { echo "File /usr/lib/systemd/autoinit.settings not found"; exit 2; }
+
+[ -z $PERSIST ] && { echo "Required var PERSIST is NOT set"; exit 3; }
+
+STARTUP_CONFIG="${PERSIST}/startup-config"
+
+[ $EUID -eq 0 ] || { echo "Must be root!"; exit 2; }
+
+#########################################################################################
+
+clear() {
+   [ -f $STARTUP_CONFIG ] || echo "Startup config does not exist"; return 1;
+   mkdir -p ${PERSIST}/.old_configs || return $?
+   mv $STARTUP_CONFIG ${PERSIST}/.old_configs/$(date +%F.%s) || return $?
+}
+
+save() {
+
+   return_code=0
+   
+   [ -f STARTUP_CONFIG ] && {
+      previousConfig=$(date +%F.%s).config
+      mv $STARTUP_CONFIG ${PERSIST}/.old_configs/${previousConfig}
+      echo "Current config copied to ${previousConfig}"
+   }
+  
+   pushd / > /dev/null      
+   tar cv --file=$STARTUP_CONFIG etc > /dev/null 2>&1 || {
+      echo "Linux config save failed!"
+      return_code=3
+   }
+   popd > /dev/null
+
+   return $return_code
+}
+
+restore() {
+   [ -f $STARTUP_CONFIG ] || { _stderr "No startup config to restore"; return 1; }
+   pushd / > /dev/null      
+   tar xf $STARTUP_CONFIG > /dev/null 2>&1 || return $?
+   popd > /dev/null
+}
+
+#########################################################################################
+
+_stderr() { printf "%s\n" "$*" >&2; }
+
+#########################################################################################
+
+case "$1" in
+   clear|save|restore)
+      $1
+   ;;
+   *)
+      echo $"Usage: $0 {clear|save|restore}"
+      exit 2
+esac
+
+#########################################################################################

@@ -1,0 +1,29 @@
+### Rebuild : Makes new rootfs.img for system root #################################################
+
+[ -f /usr/lib/systemd/autoinit.settings ] ||
+   { echo "This script should only be ran from the boot loader! FATAL!"; exit 3; }
+
+pushd /
+mkdir -p /bootimage
+mount -L bootimage /bootimage
+pushd /bootimage
+
+rm -rf run; mkdir -p run
+rm -rf tmp; mkdir -p tmp
+rm -rf etc/ssh/*key*
+rm -rf var/lib/gssproxy
+mkdir -p var/lib/gssproxy
+
+cat /dev/null > etc/hosts
+cat /dev/null > etc/fstab
+cat /dev/null > etc/resolv.conf
+
+popd
+
+mksquashfs bootimage /persist/new.rootfs.img -no-xattrs
+
+popd
+
+umount /bootimage
+
+###################################################################################################
